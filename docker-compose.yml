@@ -7,7 +7,8 @@ services:
       POSTGRES_PASSWORD: lexfold
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      # bind loopback: Docker publish bypass UFW — KHÔNG được mở 5432 ra internet
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
