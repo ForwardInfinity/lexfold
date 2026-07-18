@@ -1,0 +1,43 @@
+name: deploy
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: deploy          # push dồn dập -> deploy tuần tự, không giẫm nhau
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: guard # skip toàn bộ nếu chưa cấu hình secrets DEPLOY_*
+        id: guard
+        run: echo "on=${{ secrets.DEPLOY_HOST != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: deploy over ssh
+        if: steps.guard.outputs.on == 'true'
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 600 /dev/null key
+          printf '%s\n' "$SSH_KEY" > key
+          ssh -i key -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" bash -s <<'EOF'
+            set -euo pipefail
+            cd ~/lexfold
+            git fetch origin master
+            git reset --hard origin/master
+            docker compose up -d --build
+            docker image prune -f
+          EOF
+
+      - name: healthcheck
+        if: steps.guard.outputs.on == 'true'
+        run: |
+          for i in $(seq 1 12); do
+            curl -fsS "http://${{ secrets.DEPLOY_HOST }}:8000/healthz" && exit 0
+            sleep 5
+          done
+          echo "healthz không lên sau 60s" >&2; exit 1
